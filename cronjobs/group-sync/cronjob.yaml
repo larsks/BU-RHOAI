@@ -18,10 +18,10 @@ spec:
             env:
             # EDIT VALUE HERE BEFORE RUNNING
             - name: GROUP_NAME
-              value: "cs210"
+              value: <group>
             # EDIT VALUE HERE BEFORE RUNNING
             - name: NAMESPACE
-              value: "cs210-computer-system-boston-university-e5839d"
+              value: <namespace>
             imagePullPolicy: Always
           restartPolicy: Never  
   successfulJobsHistoryLimit: 7
