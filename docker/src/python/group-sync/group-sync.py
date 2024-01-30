@@ -18,6 +18,7 @@ def add_users_to_group(group):
     users_to_add = users_in_rolebinding.difference(users_in_group)
     users_to_remove = users_in_group.difference(users_in_rolebinding)
 
+    group_name = group.model.metadata.name
     LOG.info("adding to group %s: %s", group_name, users_to_add)
     LOG.info("removing from group %s: %s", group_name, users_to_remove)
     group.patch({"users": list(users_in_rolebinding)})
