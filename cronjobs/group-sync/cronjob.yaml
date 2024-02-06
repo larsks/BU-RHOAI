@@ -13,7 +13,7 @@ spec:
           serviceAccountName: group-sync
           containers:
           - name: group-sync
-            image: ghcr.io/ocp-on-nerc/bu-rhoai:toolkit  
+            image: ghcr.io/ocp-on-nerc/bu-rhoai:toolkit
             command: ["python", "group-sync.py"]
             env:
             # EDIT VALUE HERE BEFORE RUNNING
@@ -23,7 +23,6 @@ spec:
             - name: NAMESPACE
               value: <namespace>
             imagePullPolicy: Always
-          restartPolicy: Never  
+          restartPolicy: Never
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 7
-
