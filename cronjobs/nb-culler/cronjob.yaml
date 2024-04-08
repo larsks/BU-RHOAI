@@ -63,7 +63,13 @@ spec:
                       fi
 
                       if $user_in_group1 || $user_in_group2; then
-                          if [[ $image != *$IMAGE_NAME* ]]; then
+                          pod_name=$(oc get pods -n $ns -l notebook-name=$nb -o jsonpath="{.items[0].metadata.name}")
+                          gpu_request=$(oc get pod $pod_name -n $ns -o jsonpath='{.spec.containers[].resources.requests.nvidia\.com/gpu}')
+                          if [[ ! -z $gpu_request ]]; then
+                              echo "$nb is requesting GPU resources, deleting the notebook"
+                              oc delete notebook $nb -n $ns
+                              oc delete pvc $nb -n $ns
+                          elif [[ $image != *$IMAGE_NAME* ]]; then
                               echo "$nb is not using $IMAGE_NAME image, deleting the notebook"
                               oc delete notebook $nb -n $ns
                               oc delete pvc $nb -n $ns
