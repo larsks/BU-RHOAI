@@ -19,4 +19,3 @@ if url:
     print(f"URL for notebook {notebook_name}: {url}")
 else:
     print(f"No URL found for notebook {notebook_name}")
-
