@@ -2,20 +2,19 @@ import logging
 
 from kubernetes import config, client
 from openshift.dynamic import DynamicClient
-from abc import ABC, abstractmethod
+from typing import cast
+from typing_extensions import Protocol, override
 
 from exc import ProviderError
 
 LOG = logging.getLogger(__name__)
 
 
-class BaseProvider(ABC):
-    @abstractmethod
-    def group_members(self, group_name):
-        pass
+class Provider(Protocol):
+    def group_members(self, group_name: str) -> list[str] | None: ...
 
 
-class KubernetesProvider(BaseProvider):
+class KubernetesProvider(Provider):
     def __init__(self):
         """Allocate a Kubernetes dynamic client and Group API client"""
 

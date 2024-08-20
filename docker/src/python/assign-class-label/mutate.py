@@ -1,19 +1,22 @@
 import logging
 import pydantic
 
-from flask import Flask, request, jsonify, current_app
+from typing import Callable, Any, cast
+from flask import Flask, Response, request, jsonify, current_app
 
 from models import (
-    BaseModel,
+    Base,
     AdmissionReview,
     AdmissionResponse,
     AdmissionReviewStatus,
+    PatchOp,
+    PatchType,
     Patch,
     PatchAction,
     Pod,
 )
 
-from providers import KubernetesProvider
+from providers import Provider, KubernetesProvider
 from exc import ApplicationError
 
 LOG = logging.getLogger(__name__)
@@ -25,23 +28,20 @@ class DEFAULTS:
     PROVIDER = KubernetesProvider
 
 
-def jsonresponse():
+def jsonresponse() -> Callable[..., Callable[..., Response]]:
     """Transforms the response from a view function into a JSON object."""
 
-    def _outer(func):
-        def _inner(*args, **kwargs):
+    def _outer(func: Callable[..., Base]) -> Callable[..., Response]:
+        def _inner(*args: list[Any], **kwargs: dict[str, Any]) -> Response:
             res = func(*args, **kwargs)
-            if isinstance(res, BaseModel):
-                return jsonify(res.model_dump(exclude_none=True))
-            else:
-                return jsonify(res)
+            return jsonify(res.model_dump(exclude_none=True))
 
         return _inner
 
     return _outer
 
 
-def assign_class_label(provider, pod, groups):
+def assign_class_label(provider: Provider, pod: Pod, groups: list[str]) -> str | None:
     pod_user = pod.metadata.labels.get("opendatahub.io/user")
 
     # If there is no user, we have nothing to do.
@@ -70,12 +70,12 @@ def assign_class_label(provider, pod, groups):
     return None
 
 
-def json_patch_escape(val):
+def json_patch_escape(val: str) -> str:
     return val.replace("~", "~0").replace("/", "~1")
 
 
 @jsonresponse()
-def mutate_pod():
+def mutate_pod() -> AdmissionReview:
     body = AdmissionReview(**request.get_json())
     pod = Pod(**body.request.object)
 
@@ -95,11 +95,11 @@ def mutate_pod():
         )
 
     # Generate JSON Patch to add class label
-    label_name = current_app.config["LABEL_NAME"]
+    label_name: str = cast(str, current_app.config["LABEL_NAME"])
     patch = Patch(
         [
             PatchAction(
-                op="add",
+                op=PatchOp.ADD,
                 path=f"/metadata/labels/{json_patch_escape(label_name)}",
                 value=class_label,
             )
@@ -111,25 +111,27 @@ def mutate_pod():
         response=AdmissionResponse(
             uid=body.request.uid,
             allowed=True,
-            patchType="JSONPatch",
+            patchType=PatchType.JSONPATCH,
             patch=patch,
         )
     )
 
 
-def handle_validationerror(err):
+def handle_validationerror(
+    err: pydantic.ValidationError,
+) -> tuple[str, int, dict[str, str]]:
     return str(err), 400, {"content-type": "text/plain"}
 
 
-def handle_applicationerror(err):
+def handle_applicationerror(err: ApplicationError) -> tuple[str, int, dict[str, str]]:
     return str(err), 500, {"content-type": "text/plain"}
 
 
-def health():
+def health() -> tuple[str, int, dict[str, str]]:
     return "OK", 200, {"content-type": "text/plain"}
 
 
-def create_app(**config) -> Flask:
+def create_app(**config: dict[str, Any]) -> Flask:
     """Use an application factory [1] to create the Flask app.
 
     This makes it much easier to write tests for the application, since we can

@@ -1,5 +1,5 @@
 import base64
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from pydantic import (
     BaseModel,
     RootModel,
@@ -7,6 +7,10 @@ from pydantic import (
     field_validator,
 )
 from enum import StrEnum
+
+
+class Base(BaseModel):
+    pass
 
 
 class ApiVersion(StrEnum):
@@ -21,7 +25,7 @@ class Operation(StrEnum):
 
 
 class PatchType(StrEnum):
-    JSONPatch = "JSONPatch"
+    JSONPATCH = "JSONPatch"
 
 
 class PatchOp(StrEnum):
@@ -30,7 +34,7 @@ class PatchOp(StrEnum):
     REMOVE = "remove"
 
 
-class PatchAction(BaseModel):
+class PatchAction(Base):
     op: PatchOp
     path: str
     value: Any
@@ -41,30 +45,28 @@ Patch = RootModel[list[PatchAction]]
 
 
 # https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#status-v1-meta
-class AdmissionReviewStatus(BaseModel):
+class AdmissionReviewStatus(Base):
     message: str
 
 
 # https://kubernetes.io/docs/reference/config-api/apiserver-admission.v1/#admission-k8s-io-v1-AdmissionResponse
-class AdmissionResponse(BaseModel):
+class AdmissionResponse(Base):
     allowed: bool
     status: AdmissionReviewStatus | None = None
     uid: str
     patchType: PatchType | None = None
-    patch: str | None = None
+    patch: str | Patch | None = None
 
     @field_validator("patch", mode="before")
     @classmethod
-    def validate_patch(cls, val):
-        if isinstance(val, Patch):
-            val = base64.b64encode(val.model_dump_json().encode())
-        elif isinstance(val, (str, bytes)):
+    def validate_patch(cls, val: Patch | str | bytes) -> bytes:
+        if isinstance(val, (str, bytes)):
             # Make sure the base64 string contains valid data.
-            Patch.model_validate_json(base64.b64decode(val))
-        return val
+            val = Patch.model_validate_json(base64.b64decode(val))
+        return base64.b64encode(val.model_dump_json().encode())
 
     @model_validator(mode="after")
-    def validate_model(self):
+    def validate_model(self) -> Self:
         if self.patch and not self.patchType:
             raise ValueError("missing patchType field")
         if self.patchType and not self.patch:
@@ -74,7 +76,7 @@ class AdmissionResponse(BaseModel):
 
 
 # https://kubernetes.io/docs/reference/config-api/apiserver-admission.v1/#admission-k8s-io-v1-AdmissionRequest
-class AdmissionRequest(BaseModel):
+class AdmissionRequest(Base):
     uid: str
     name: str | None = None
     operation: Operation = Operation.CREATE
@@ -82,23 +84,23 @@ class AdmissionRequest(BaseModel):
 
 
 # https://kubernetes.io/docs/reference/config-api/apiserver-admission.v1/#admission-k8s-io-v1-AdmissionReview
-class AdmissionReview(BaseModel):
+class AdmissionReview(Base):
     apiVersion: Literal[ApiVersion.V1] = ApiVersion.V1
     kind: Literal["AdmissionReview"] = "AdmissionReview"
     request: AdmissionRequest | None = None
     response: AdmissionResponse | None = None
 
     @model_validator(mode="after")
-    def validate_model(self):
+    def validate_model(self) -> Self:
         if not (self.request or self.response):
             raise ValueError("must contain a request or a response")
 
         return self
 
 
-class Metadata(BaseModel):
+class Metadata(Base):
     labels: dict[str, str] = {}
 
 
-class Pod(BaseModel):
+class Pod(Base):
     metadata: Metadata
