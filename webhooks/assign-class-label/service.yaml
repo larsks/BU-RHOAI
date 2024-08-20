@@ -3,8 +3,6 @@ kind: Service
 metadata:
   name: assign-class-label-webhook
 spec:
-  selector:
-    app: assign-class-label-webhook
   ports:
     - name: https
       protocol: TCP
