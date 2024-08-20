@@ -53,7 +53,7 @@ def assign_class_label(pod, groups):
 
 @webhook.route('/mutate', methods=['POST'])
 def mutate_pod():
-    # Grab pod for mutation 
+    # Grab pod for mutation
     request_info = request.get_json()
     uid = request_info["request"]["uid"]
     pod = request_info["request"]["object"]
@@ -78,7 +78,7 @@ def mutate_pod():
                 "status": {"message": "No class label assigned."}
             }
         })
-    
+
     # Generate JSON Patch to add class label
     patch = [{
         "op": "add",

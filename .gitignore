@@ -160,6 +160,6 @@ cython_debug/
 #.idea/
 
 
-webhook.crt 
+webhook.crt
 webhook.key
 webhooks/assign-class-label/secret.yaml
