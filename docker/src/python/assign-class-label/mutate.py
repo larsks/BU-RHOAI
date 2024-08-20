@@ -1,106 +1,160 @@
 import logging
-import json
-import base64
-import os
-from flask import Flask, request, jsonify
-from kubernetes import config, client
-from openshift.dynamic import DynamicClient
+import pydantic
 
-webhook = Flask(__name__)
+from flask import Flask, request, jsonify, current_app
+
+from models import (
+    BaseModel,
+    AdmissionReview,
+    AdmissionResponse,
+    AdmissionReviewStatus,
+    Patch,
+    PatchAction,
+    Pod,
+)
+
+from providers import KubernetesProvider
+from exc import ApplicationError
 
 LOG = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-try:
-    config.load_incluster_config()
-except config.ConfigException as e:
-    LOG.error("Could not configure Kubernetes client: %s", str(e))
-    exit(1)
 
-k8s_client = client.ApiClient()
-dyn_client = DynamicClient(k8s_client)
+class DEFAULTS:
+    LABEL_NAME = "nerc.mghpcc.org/class"
+    PROVIDER = KubernetesProvider
 
 
-def assign_class_label(pod, groups):
-    # Extract pod metadata
-    pod_metadata = pod.get('metadata', {})
-    pod_labels = pod_metadata.get('labels', {})
-    pod_user = pod_labels.get("opendatahub.io/user", None)
+def jsonresponse():
+    """Transforms the response from a view function into a JSON object."""
+
+    def _outer(func):
+        def _inner(*args, **kwargs):
+            res = func(*args, **kwargs)
+            if isinstance(res, BaseModel):
+                return jsonify(res.model_dump(exclude_none=True))
+            else:
+                return jsonify(res)
+
+        return _inner
+
+    return _outer
+
+
+def assign_class_label(provider, pod, groups):
+    pod_user = pod.metadata.labels.get("opendatahub.io/user")
+
+    # If there is no user, we have nothing to do.
+    if pod_user is None:
+        return
 
     # Iterate through classes
-    for group in groups:
-        try:
+    try:
+        for group in groups:
             # Get users in group (class)
-            group_resource = dyn_client.resources.get(api_version='user.openshift.io/v1', kind='Group')
-            group_obj = group_resource.get(name=group)
-            group_obj_dict = group_obj.to_dict()
-            group_users = group_obj_dict.get('users', [])
+            users = provider.group_members(group)
 
             # Check if group has no users
-            if not group_users:
-                LOG.warning(f"Group {group} has no users or users attribute is not a list.")
+            if not users:
+                LOG.warning(f"Group {group} has no users.")
                 continue
 
             # Compare users in the groups (classes) with the pod user
-            if pod_user in group_users:
+            if pod_user in users:
                 LOG.info(f"Assigning class label: {group} to user {pod_user}")
                 return group
-        except Exception as e:
-            LOG.error(f"Error fetching group {group}: {str(e)}")
-            continue
+    except Exception as err:
+        LOG.error("failed to process groups: %s", err)
+        raise ApplicationError("failed to process groups")
 
     return None
 
-@webhook.route('/mutate', methods=['POST'])
+
+def json_patch_escape(val):
+    return val.replace("~", "~0").replace("/", "~1")
+
+
+@jsonresponse()
 def mutate_pod():
-    # Grab pod for mutation
-    request_info = request.get_json()
-    uid = request_info["request"]["uid"]
-    pod = request_info["request"]["object"]
-
-    groups = os.environ.get("GROUPS").split(",")
-
-    if not groups:
-        LOG.error("GROUPS environment variables are required.")
-        exit(1)
+    body = AdmissionReview(**request.get_json())
+    pod = Pod(**body.request.object)
 
     # Grab class that the pod user belongs to
-    class_label = assign_class_label(pod, groups)
+    class_label = assign_class_label(
+        current_app.provider, pod, current_app.config["GROUPS"]
+    )
 
     # If user not in any class, return without modifications
     if not class_label:
-        return jsonify({
-            "apiVersion": "admission.k8s.io/v1",
-            "kind": "AdmissionReview",
-            "response": {
-                "uid": uid,
-                "allowed": True,
-                "status": {"message": "No class label assigned."}
-            }
-        })
+        return AdmissionReview(
+            response=AdmissionResponse(
+                allowed=True,
+                uid=body.request.uid,
+                status=AdmissionReviewStatus(message="No class label assigned"),
+            )
+        )
 
     # Generate JSON Patch to add class label
-    patch = [{
-        "op": "add",
-        "path": "/metadata/labels/class",
-        "value": class_label
-    }]
-
-    # Encode patch as base64 for response
-    patch_base64 = base64.b64encode(json.dumps(patch).encode('utf-8')).decode('utf-8')
+    label_name = current_app.config["LABEL_NAME"]
+    patch = Patch(
+        [
+            PatchAction(
+                op="add",
+                path=f"/metadata/labels/{json_patch_escape(label_name)}",
+                value=class_label,
+            )
+        ]
+    )
 
     # Return webhook response that includes the patch to add class label
-    return jsonify({
-        "apiVersion": "admission.k8s.io/v1",
-        "kind": "AdmissionReview",
-        "response": {
-            "uid": uid,
-            "allowed": True,
-            "patchType": "JSONPatch",
-            "patch": patch_base64
-        }
-    })
+    return AdmissionReview(
+        response=AdmissionResponse(
+            uid=body.request.uid,
+            allowed=True,
+            patchType="JSONPatch",
+            patch=patch,
+        )
+    )
 
-if __name__ == "__main__":
-    logging.basicConfig(level="INFO")
-    webhook.run(host='0.0.0.0', port=8443)
+
+def handle_validationerror(err):
+    return str(err), 400, {"content-type": "text/plain"}
+
+
+def handle_applicationerror(err):
+    return str(err), 500, {"content-type": "text/plain"}
+
+
+def health():
+    return "OK", 200, {"content-type": "text/plain"}
+
+
+def create_app(**config) -> Flask:
+    """Use an application factory [1] to create the Flask app.
+
+    This makes it much easier to write tests for the application, since we can
+    set up the test environment before instantiating the app. This is difficult
+    to do if the app is created at `import` time.
+
+    [1]: https://flask.palletsprojects.com/en/3.0.x/patterns/appfactories/
+    """
+
+    app = Flask(__name__)
+    app.config.from_object(DEFAULTS)
+    app.config.from_prefixed_env("RHOAI")
+    if config:
+        app.config.update(config)
+
+    if not app.config.get("GROUPS"):
+        LOG.error("Missing groups configuration")
+        exit(1)
+
+    app.config["GROUPS"] = app.config["GROUPS"].split(",")
+    app.provider = app.config["PROVIDER"]()
+
+    app.errorhandler(pydantic.ValidationError)(handle_validationerror)
+    app.errorhandler(ApplicationError)(handle_applicationerror)
+    app.add_url_rule("/healthz", view_func=health)
+    app.add_url_rule("/mutate", view_func=mutate_pod, methods=["POST"])
+
+    return app
