@@ -71,7 +71,7 @@ def test_request_no_metadata(client):
         },
     )
 
-    assert res.status_code == 400
+    assert res.status_code == 200
     assert res.json == {
         'apiVersion': 'admission.k8s.io/v1',
         'kind': 'AdmissionReview',
@@ -172,7 +172,7 @@ def test_no_user(client):
         },
     )
 
-    assert res.status_code == 400
+    assert res.status_code == 200
     assert res.json == {
         'apiVersion': 'admission.k8s.io/v1',
         'kind': 'AdmissionReview',
@@ -195,7 +195,7 @@ def test_no_user(client):
         },
     )
 
-    assert res.status_code == 400
+    assert res.status_code == 200
     assert res.json == {
         'apiVersion': 'admission.k8s.io/v1',
         'kind': 'AdmissionReview',
@@ -229,7 +229,7 @@ def test_empty_group_members(client):
             },
         )
 
-        assert res.status_code == 400
+        assert res.status_code == 200
         assert res.json == {
             'apiVersion': 'admission.k8s.io/v1',
             'kind': 'AdmissionReview',

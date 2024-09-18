@@ -131,7 +131,7 @@ def create_app(**config: Any) -> Flask:
                         )
                     ).model_dump()
                 ),
-                400,
+                200,
                 {'content-type': 'application/json'},
             )
 
