@@ -5,46 +5,13 @@ from flask import Flask, request, jsonify, Response
 from kubernetes import config, client
 from openshift.dynamic import DynamicClient
 
-from pydantic import BaseModel, ValidationError, constr
-from typing import Dict, Any, Optional, List
+from pydantic import ValidationError
+from typing import Any, List
+
+from models import AdmissionReviewResponse, AdmissionReview, AdmissionResponse, Status
 
 LOG = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-class PodMetadata(BaseModel):
-    labels: Optional[Dict[str, str]] = None
-
-
-class PodObject(BaseModel):
-    metadata: PodMetadata
-
-
-class AdmissionRequest(BaseModel):
-    uid: constr(min_length=1)
-    object: PodObject
-
-
-class AdmissionReview(BaseModel):
-    request: AdmissionRequest
-
-
-class Status(BaseModel):
-    message: Optional[str] = None
-
-
-class AdmissionResponse(BaseModel):
-    uid: str
-    allowed: bool
-    status: Optional[Status] = None
-    patchType: Optional[str] = None
-    patch: Optional[str] = None
-
-
-class AdmissionReviewResponse(BaseModel):
-    apiVersion: str = 'admission.k8s.io/v1'
-    kind: str = 'AdmissionReview'
-    response: AdmissionResponse
 
 
 def decode_pod_user(pod_user: str) -> str:
