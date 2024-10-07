@@ -1,0 +1,31 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: assign-class-label-webhook
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: assign-class-label
+          image: quay.io/rh-ee-istaplet/ope-webhooks:assign-class-label-webhook
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 443
+          volumeMounts:
+            - name: cert
+              mountPath: /certs
+              readOnly: true
+          resources:
+            limits: 
+              cpu: 500m
+              memory: 512Mi
+          env:
+            # EDIT VALUE HERE BEFORE RUNNING, must be comma separated
+            - name: RHOAI_CLASS_GROUPS
+              value: "cs210,cs506,ee440"
+      serviceAccountName: webhook-sa
+      volumes:
+        - name: cert
+          secret:
+            secretName: webhook-cert
