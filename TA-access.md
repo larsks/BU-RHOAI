@@ -47,7 +47,7 @@ Follow these instructions to download the CLI tools from: <https://docs.openshif
 On the NERC OCP console:
 
 - From the top right username dropdown box, select “Copy login command”.
-- You will be redirected to a new page. Click “Display Token”. 
+- You will be redirected to a new page. Click “Display Token”.
 - Copy the cli command under “Log in with this token”.
 - Paste this command in your local terminal to login.
 
@@ -65,4 +65,3 @@ Note, this command displays all notebooks under rhods-notebooks namespace.
 
 Notebook name is in the format of “`jupyter-nb-<username>`”. A script has been provided for you to retrieve a student jupyter notebook URL. Please refer to this README file: <https://github.com/OCP-on-NERC/BU-RHOAI?tab=readme-ov-file#get_urlpy>
 You can open the URL in your browser to view the student notebook.
-

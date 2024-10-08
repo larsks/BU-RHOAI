@@ -12,13 +12,13 @@ This offers us a way to keep class users added to course namespaces via ColdFron
 1. Ensure you are logged in to your OpenShift account via the CLI and you have access to rhods-notebooks namespace.
 2. Switch to your course namespace:
 ```
-	oc project <namespace>
+    oc project <namespace>
 ```
 
 3. Update the `GROUP_NAME` and `NAMESPACE` env variables in cronjobs/group-sync/cronjob.yaml
 4. From cronjobs/group-sync/ directory run:
 ```
-	oc apply -k . --as system:admin
+    oc apply -k . --as system:admin
 ```
 
 This will deploy all the necessary resources for the cronjob to run on the specified schedule.(Every hour by default)
@@ -28,12 +28,12 @@ Alternatively, to run the script immediately:
 1. Ensure you followed the steps above
 2. Verify the cronjob `group-sync` exists
 ```
-	oc get cronjob group-sync
+    oc get cronjob group-sync
 ```
 
 3. Run:
 ```
-	kubectl create -n rhods-notebooks job --from=cronjob/group-sync group-sync
+    kubectl create -n rhods-notebooks job --from=cronjob/group-sync group-sync
 ```
 
 ### nb-culler
@@ -49,14 +49,14 @@ To add resources to the rhods-notebooks namespace:
 1. Ensure you are logged in to your OpenShift account via the CLI and you have access to rhods-notebooks namespace.
 2. Switch to rhods-notebooks namespace:
 ```
-	oc project rhods-notebooks
+    oc project rhods-notebooks
 ```
 
 3. Ensure the environment variables for `GROUP_NAME`, `CUTOFF_TIME` (seconds), `IMAGE_NAME` are correctly set.
 
 4. From cronjobs/nb-culler/ directory run:
 ```
-	oc apply -k . --as system:admin
+    oc apply -k . --as system:admin
 ```
 
 This will deploy all the necessary resources for the cronjob to run on the specified schedule.
@@ -66,12 +66,12 @@ Alternatively, to run the script immediately:
 1. Ensure you followed the steps above
 2. Verify the cronjob `nb-culler` exists
 ```
-	oc get cronjob nb-culler
+    oc get cronjob nb-culler
 ```
 
 3. Run:
 ```
-	kubectl create -n rhods-notebooks job --from=cronjob/nb-culler nb-culler
+    kubectl create -n rhods-notebooks job --from=cronjob/nb-culler nb-culler
 ```
 
 This will trigger the cronjob to spawn a job manually.
@@ -85,22 +85,22 @@ This script is used to retrieve the URL for a particular notebook associated wit
 
 1. Ensure you are logged in to your OpenShift account via the CLI and you have access to rhods-notebooks namespace.
 2. TAs can list all notebooks under rhods-notebooks namespace via the CLI
-	```
-	oc get notebooks -n rhods-notebooks
-	```
+    ```
+    oc get notebooks -n rhods-notebooks
+    ```
 3. Before running this script, ensure that pyyaml is installed in your Python environment:
-	```
-	pip install pyyaml
-	```
+    ```
+    pip install pyyaml
+    ```
 4. Run the script:
-	```
-	python get_url.py
-	```
-	It prompts the user to enter the notebook name. Output will look something like:
-	```
-	Enter the notebook name: xxx
-	URL for notebook xxx: xxx
-	```
+    ```
+    python get_url.py
+    ```
+    It prompts the user to enter the notebook name. Output will look something like:
+    ```
+    Enter the notebook name: xxx
+    URL for notebook xxx: xxx
+    ```
 
 ## Webhooks
 
@@ -116,53 +116,53 @@ In order to modify the deployment follow these steps:
 
 2. Generate a new OpenSSL certificate
 
-	```
-	openssl req -x509 -sha256 -newkey rsa:2048 -keyout webhook.key -out webhook.crt -days 1024 -nodes -addext "subjectAltName = DNS.1:service_name.namespace.svc"
-	```
+    ```
+    openssl req -x509 -sha256 -newkey rsa:2048 -keyout webhook.key -out webhook.crt -days 1024 -nodes -addext "subjectAltName = DNS.1:service_name.namespace.svc"
+    ```
 
-	When deployed to rhods-notebooks the command was specified as such:
+    When deployed to rhods-notebooks the command was specified as such:
 
-	```
-	openssl req -x509 -sha256 -newkey rsa:2048 -keyout webhook.key -out webhook.crt -days 1024 -nodes -addext "subjectAltName = DNS.1:assign-class-label-webhook.rhods-notebooks.svc"
-	```
+    ```
+    openssl req -x509 -sha256 -newkey rsa:2048 -keyout webhook.key -out webhook.crt -days 1024 -nodes -addext "subjectAltName = DNS.1:assign-class-label-webhook.rhods-notebooks.svc"
+    ```
 
 3. Add the cert and key to the required resources:
 
-	```
-	cat webhook.crt | base64 | tr -d '\n'
-	```
+    ```
+    cat webhook.crt | base64 | tr -d '\n'
+    ```
 
-	```
-	cat webhook.key | base64 | tr -d '\n'
-	```
+    ```
+    cat webhook.key | base64 | tr -d '\n'
+    ```
 
-	This will encode the certificate and key in base64 format which is required. Copy the output of the webhook.crt to the caBundle in webhooks/assign-class-label/webhook-config.yaml. Then create a secret.yaml that looks like this 
+    This will encode the certificate and key in base64 format which is required. Copy the output of the webhook.crt to the caBundle in webhooks/assign-class-label/webhook-config.yaml. Then create a secret.yaml that looks like this
 
-	```
-	apiVersion: v1
-	kind: Secret
-	metadata:
-  		name: webhook-cert
-	type: Opaque
-	data:
-  		webhook.crt: 
-  		webhook.key: 
-	```
+    ```
+    apiVersion: v1
+    kind: Secret
+    metadata:
+        name: webhook-cert
+    type: Opaque
+    data:
+        webhook.crt:
+        webhook.key:
+    ```
 
-	Copy and paste the output of the cat command to the respective fields for webhook.crt and webhook.key. Then execute 
+    Copy and paste the output of the cat command to the respective fields for webhook.crt and webhook.key. Then execute
 
-	```
-	oc apply -f secret.yaml --as system:admin
-	```
+    ```
+    oc apply -f secret.yaml --as system:admin
+    ```
 
-	within the same namespace that your webhook will be deployed to.
+    within the same namespace that your webhook will be deployed to.
 
 
 4. Change namespace variable in the kubernetes manifests to match namespace you want the webhook to be deployed to.
 
 5. From webhooks/assign-class-label/ directory run:
 ```
-	oc apply -k . --as system:admin
+    oc apply -k . --as system:admin
 ```
 
 ***Steps 2, 3, and 4 are only required if you are deploying to a new namespace/environment.***
