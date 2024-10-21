@@ -24,7 +24,8 @@ async def gather_logs(namespace: str):
 
     while True:
         w = watch.Watch()
-        tasks = {}
+        log_tasks = {}
+        event_tasks = {}
         try:
             async for event in w.stream(
                 v1.list_namespaced_pod, namespace=namespace, timeout_seconds=0
@@ -46,25 +47,36 @@ async def gather_logs(namespace: str):
                     container_name = pod.spec.containers[0].name
 
                     # Start streaming logs
-                    if pod_name not in tasks:
-                        tasks[pod_name] = asyncio.create_task(
+                    if pod_name not in log_tasks:
+                        log_tasks[pod_name] = asyncio.create_task(
                             stream_pod_logs(v1, namespace, pod_name, container_name)
+                        )
+                        event_tasks[pod_name] = asyncio.create_task(
+                            stream_pod_events(v1, namespace, pod_name, container_name)
                         )
                 elif event_type == 'DELETED':
                     LOG.info(f'Pod deleted: {pod_name}. Cancelling log streaming.')
-                    if pod_name in tasks:
-                        tasks[pod_name].cancel()
-                        del tasks[pod_name]
+                    if pod_name in log_tasks:
+                        log_tasks[pod_name].cancel()
+                        del log_tasks[pod_name]
+                    if pod_name in event_tasks:
+                        event_tasks[pod_name].cancel()
+                        del event_tasks[pod_name]
 
         except Exception as e:
             LOG.info(f'Server side Timeout: {e}. Re-establishing connection.')
 
             await w.close()
 
-            for task in tasks.values():
+            for task in log_tasks.values():
                 task.cancel()
 
-            await asyncio.gather(*tasks.values(), return_exceptions=True)
+            for event in event_tasks.values():
+                event.cancel()
+
+            await asyncio.gather(*log_tasks.values(), return_exceptions=True)
+
+            await asyncio.gather(*event_tasks.values(), return_exceptions=True)
 
             await asyncio.sleep(5)
 
@@ -102,6 +114,56 @@ async def stream_pod_logs(
                     decoded_line = line.decode('utf-8')
                     await log_file.write(decoded_line)
                     await log_file.flush()
+    except asyncio.CancelledError:
+        if response:
+            await response.release()
+    except Exception as e:
+        LOG.error(f"Unexpected error while streaming logs for pod '{pod_name}': {e}")
+        LOG.error(traceback.format_exc())
+        raise
+    finally:
+        if response:
+            await response.release()
+
+    await asyncio.sleep(5)
+
+
+async def stream_pod_events(
+    v1: client.CoreV1Api, namespace: str, pod_name: str, container_name: str
+):
+    LOG_DIR = './log'
+
+    if not os.path.exists(LOG_DIR):
+        try:
+            os.makedirs(LOG_DIR)
+        except Exception as e:
+            LOG.error(f"Could not create log directory '{LOG_DIR}': {e}")
+            exit(1)
+
+    log_file_path = os.path.join(LOG_DIR, f'{pod_name}-events.log')
+    LOG.info(f"Streaming events for pod '{pod_name}' to '{log_file_path}'.")
+
+    field_selector = f'involvedObject.kind=Pod,involvedObject.name={pod_name},involvedObject.namespace={namespace}'
+
+    response = None
+    try:
+        events = await v1.list_namespaced_event(
+            namespace=namespace, field_selector=field_selector
+        )
+
+        # Read logs and write to log file
+        async with aiofiles.open(log_file_path, 'w') as log_file:
+            for event in events.items:
+                if event:
+                    event_time = event.last_timestamp
+                    event_type = event.type
+                    event_message = event.message
+
+                    event_entry = f'{event_time} | Type: {event_type} | Message: {event_message}\n'
+
+                    await log_file.write(event_entry)
+                    await log_file.flush()
+
     except asyncio.CancelledError:
         if response:
             await response.release()
