@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ope-log-collector
+  namespace: rhods-notebooks
+spec:
+  replicas: 1
+  template:
+    spec:
+      serviceAccountName: ope-log-collector
+      containers:
+        - name: ope-log-collector
+          image: quay.io/rh-ee-istaplet/ope-tools:ope-log-collector
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: ope-logs
+              mountPath: /log
+          env:
+            # EDIT VALUE HERE BEFORE RUNNING
+            - name: NAMESPACE
+              value: "rhods-notebooks"
+      volumes:
+        - name: ope-logs
+          persistentVolumeClaim:
+            claimName: ope-logs
