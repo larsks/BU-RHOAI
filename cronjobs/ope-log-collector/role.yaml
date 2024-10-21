@@ -4,5 +4,5 @@ metadata:
   name: ope-log-collector
 rules:
 - apiGroups: ["user.openshift.io", ""]
-  resources: ["pods", "pods/log"]
+  resources: ["pods", "pods/log", "events"]
   verbs: ["get", "list", "watch"]
