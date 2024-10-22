@@ -1,2 +1,2 @@
-kubernetes-asyncio
 aiofiles
+pydantic

@@ -40,73 +40,57 @@ async def gather_logs(namespace: str):
             LOG.error(f"Could not create log directory '{LOG_DIR}': {e}")
             exit(1)
 
-    # # For handling server side timeout issue
-    # first_run = True
-    # if not first_run:
-    #     since_seconds = 5
-    # else:
-    #     since_seconds = 99999999999999
+    w = watch.Watch()
+    tasks = {}
+    try:
+        async for event in w.stream(
+            v1.list_namespaced_pod, namespace=namespace, timeout_seconds=0
+        ):
+            pod = event['object']
+            pod_name = pod.metadata.name
+            event_type = event['type']
 
-    while True:
-        w = watch.Watch()
-        tasks = {}
-        try:
-            async for event in w.stream(v1.list_namespaced_pod, namespace=namespace):
-                pod = event['object']
-                pod_name = pod.metadata.name
-                event_type = event['type']
+            # Filter pods created by rhoai
+            if not pod_name.startswith('jupyter-nb'):
+                continue
 
-                # Filter pods created by rhoai
-                if not pod_name.startswith('jupyter-nb'):
+            pvc_name = pod.spec.volumes[0].name
+
+            # Wait until pods start up
+            if event_type in ['ADDED', 'MODIFIED']:
+                pod_status = pod.status.phase
+                if pod_status != 'Running':
                     continue
 
-                pvc_name = pod.spec.volumes[0].name
+                container_name = pod.spec.containers[0].name
 
-                # Wait until pods start up
-                if event_type in ['ADDED', 'MODIFIED']:
-                    pod_status = pod.status.phase
-                    if pod_status != 'Running':
-                        continue
+                log_info = LogInfo(
+                    v1=v1,
+                    namespace=namespace,
+                    pod_name=pod_name,
+                    container_name=container_name,
+                    pvc_name=pvc_name,
+                )
 
-                    container_name = pod.spec.containers[0].name
-
-                    log_info = LogInfo(
-                        v1=v1,
-                        namespace=namespace,
-                        pod_name=pod_name,
-                        container_name=container_name,
-                        pvc_name=pvc_name,
+                # Start streaming logs
+                if pod_name not in tasks:
+                    tasks[pod_name] = await asyncio.gather(
+                        stream_pod_logs(log_info),
+                        stream_pod_events(log_info),
+                        stream_pvc_events(log_info),
                     )
 
-                    # Start streaming logs
-                    if pod_name not in tasks:
-                        tasks[pod_name] = asyncio.gather(
-                            stream_pod_logs(log_info),
-                            stream_pod_events(log_info),
-                            stream_pvc_events(log_info),
-                        )
-
-                elif event_type == 'DELETED':
+            elif event_type == 'DELETED':
+                if pod_name in tasks:
                     LOG.info(f'Pod deleted: {pod_name}. Cancelling log streaming.')
-                    if pod_name in tasks:
-                        tasks[pod_name].cancel()
-                        del tasks[pod_name]
+                    del tasks[pod_name]
 
-        except asyncio.CancelledError:
-            LOG.info('User cancelled run. Cancelling log streaming.')
-            exit(1)
+    except asyncio.CancelledError:
+        LOG.info('User cancelled run. Cancelling log streaming.')
+        exit(1)
 
-        except Exception as e:
-            LOG.info(f'Unexpected Error: {e}. Re-establishing connection.')
-
-            await w.close()
-
-            for task in tasks.values():
-                task.cancel()
-
-            await asyncio.gather(*tasks.values(), return_exceptions=True)
-
-            await asyncio.sleep(5)
+    except Exception as e:
+        LOG.info(f'Unexpected Error: {e}.')
 
 
 async def stream_pod_logs(log_info: LogInfo):
