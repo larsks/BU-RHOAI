@@ -16,9 +16,14 @@ spec:
             - name: ope-logs
               mountPath: /log
           env:
-            # EDIT VALUE HERE BEFORE RUNNING
             - name: NAMESPACE
               value: "rhods-notebooks"
+        - name: read-pvc
+          image: registry.access.redhat.com/ubi8/ubi
+          command: ["sleep", "infinity"]
+          volumeMounts:
+            - name: ope-logs
+              mountPath: /log
       volumes:
         - name: ope-logs
           persistentVolumeClaim:
