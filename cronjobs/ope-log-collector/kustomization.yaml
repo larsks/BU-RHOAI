@@ -10,3 +10,4 @@ resources:
   - rolebinding.yaml
   - serviceaccount.yaml
   - pvc.yaml
+  - service.yaml
